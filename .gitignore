@@ -1,0 +1,42 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environments
+venv/
+.env/
+*.env
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Ignore dataset and database files
+dbs/**/*.db
+dbs/**/*.sqlite
+dbs/**/*.csv
+dbs/**/*.json
+
+# Ignore model and large binary files
+*.pth
+*.h5
+*.onnx
+*.tflite
+*.pkl
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore VSCode and IDE-specific files
+.vscode/
+.idea/
+*.iml
+
+# Ignore compiled executables
+*.exe
+*.dll
+*.so
+*.dylib

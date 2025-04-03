@@ -2,12 +2,18 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras as k
 from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.layers import Dense, Input, Lambda, GlobalAveragePooling2D
+from tensorflow.keras.layers import (
+    Dense,
+    Input,
+    Lambda,
+    GlobalAveragePooling2D,
+    Concatenate,
+)
 from tensorflow.keras.models import Model
 import matplotlib.pyplot as plt
 
 ### locak import ###
-# none
+from data.siamese_data_pipeline import data_pipeline
 
 ### type definitions  ###
 # none
@@ -49,11 +55,12 @@ class siameseModel:
         embedding_a = self.embedding_model(input_a)
         embedding_b = self.embedding_model(input_b)
 
-        # Calculate distance between embeddings
-        distance = self.distance_layer([embedding_a, embedding_b])
+        # concating the two embeddings
+        abs_diff = Lambda(lambda x: k.abs(x[0] - x[1]))([embedding_a, embedding_b])
+        merged = Concatenate(axis=-1)([embedding_a, embedding_b, abs_diff])
 
         # Pass through classifier to get similarity score
-        outputs = self.classifier(distance)
+        outputs = self.classifier(merged)
 
         # Create the trainable model
         self.siamese_net = Model(inputs=[input_a, input_b], outputs=outputs)
@@ -165,16 +172,17 @@ def load_embedding_MobileNetV2(img_shape: tuple[int, ...]) -> k.Model:
     base_model = MobileNetV2(
         input_shape=img_shape, include_top=False, weights="imagenet"
     )
-    # Add a GlobalAveragePooling2D layer
+    # Apply Global Average Pooling to convert feature maps into a compact embedding
     x = GlobalAveragePooling2D()(base_model.output)
-    # Add a dense layer
-    x = Dense(128, activation="relu")(x)
     # Create the Embedding model
     model = Model(inputs=base_model.input, outputs=x)
-    # Print the model summary
-    print(f"MobileNetV2 embedding model loaded with output shape: {model.shape}")
+    # Print model summary
+    print(f"MobileNetV2 embedding model loaded with output shape: {model.output_shape}")
 
     return model
+
+
+# tensor board
 
 
 def plot_training_history(history1, history2=None, save_path=None):
@@ -282,8 +290,6 @@ def train(total_epochs: int = 10, verbose: bool = False) -> int:
     # define image shape
     img_shape = (224, 224, 3)
     batch_size = 32
-    # load data & prepare dataset
-    from siamese_data_pipeline import data_pipeline
 
     (X_train, y_train), (X_test, y_test) = data_pipeline(
         root_in_path="dbs/comparator_db/raw",

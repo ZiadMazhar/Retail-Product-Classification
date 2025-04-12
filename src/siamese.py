@@ -20,7 +20,7 @@ from data.siamese_data_pipeline import data_pipeline
 
 
 ### load up the env var ###
-class siameseModel:
+class siameseModel(tf.keras.Model):
     def __init__(self, img_shape: tuple[int, ...], embedding_model: k.Model):
         """
         Initialize the Siamese network model.
@@ -44,19 +44,27 @@ class siameseModel:
             ]
         )
         self._build_model()
+        
+    # Add get_config method for proper serialization
+    def get_config(self):
+        config = {
+            'image_shape': self.image_shape,
+        }
+        base_config = super(siameseModel, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
     def _build_model(self):
         """Build the complete Siamese model architecture."""
         # Input for image pairs
-        input_a = Input(shape=self.img_shape)
-        input_b = Input(shape=self.img_shape)
+        input_a = Input(shape=self.image_shape)
+        input_b = Input(shape=self.image_shape)
 
         # Get embeddings for both inputs
         embedding_a = self.embedding_model(input_a)
         embedding_b = self.embedding_model(input_b)
 
-        # concating the two embeddings
-        abs_diff = Lambda(lambda x: k.abs(x[0] - x[1]))([embedding_a, embedding_b])
+        # Calculate absolute difference between embeddings
+        abs_diff = Lambda(lambda x: tf.math.abs(x[0] - x[1]))([embedding_a, embedding_b])
         merged = Concatenate(axis=-1)([embedding_a, embedding_b, abs_diff])
 
         # Pass through classifier to get similarity score
@@ -65,20 +73,23 @@ class siameseModel:
         # Create the trainable model
         self.siamese_net = Model(inputs=[input_a, input_b], outputs=outputs)
 
-    def call(self, X: np.ndarray) -> np.ndarray:
+    def call(self, X: tf.Tensor, training=None) -> tf.Tensor:
         """
         Forward pass through the Siamese network.
 
         Args:
-            X: Input tensor of shape (2, batch_size, height, width, channels)
-                X[0] is the first set of images
-                X[1] is the second set of images
+            X: Input tensor of shape (batch_size, 2, height, width, channels)
+            training: Whether the model is in training mode
 
         Returns:
             Similarity scores between pairs of images
         """
-        image_a, image_b = X
-        return self.siamese_net([image_a, image_b])
+        # Extract the first and second images from the input tensor
+        image_a = X[:, 0]  # First image in each pair
+        image_b = X[:, 1]  # Second image in each pair
+        
+        # Pass through the siamese network
+        return self.siamese_net([image_a, image_b], training=training)
 
     def train_step(self, data: tuple[np.ndarray]) -> dict[str, float]:
         """
@@ -198,16 +209,17 @@ def plot_training_history(history1, history2=None, save_path=None):
 
     # Plot training & validation accuracy
     plt.subplot(2, 1, 1)
-    plt.plot(history1.history["accuracy"], label="Phase 1 Training")
-    plt.plot(history1.history["val_accuracy"], label="Phase 1 Validation")
+    # Use binary_accuracy instead of accuracy
+    plt.plot(history1.history["binary_accuracy"], label="Phase 1 Training")
+    plt.plot(history1.history["val_binary_accuracy"], label="Phase 1 Validation")
 
     if history2:
         # Adjust x-axis for phase 2
-        x_offset = len(history1.history["accuracy"])
-        x_phase2 = [x + x_offset for x in range(len(history2.history["accuracy"]))]
+        x_offset = len(history1.history["binary_accuracy"])
+        x_phase2 = [x + x_offset for x in range(len(history2.history["binary_accuracy"]))]
 
-        plt.plot(x_phase2, history2.history["accuracy"], label="Phase 2 Training")
-        plt.plot(x_phase2, history2.history["val_accuracy"], label="Phase 2 Validation")
+        plt.plot(x_phase2, history2.history["binary_accuracy"], label="Phase 2 Training")
+        plt.plot(x_phase2, history2.history["val_binary_accuracy"], label="Phase 2 Validation")
 
     plt.title("Model Accuracy")
     plt.ylabel("Accuracy")
@@ -332,7 +344,9 @@ def train(total_epochs: int = 10, verbose: bool = False) -> int:
             epochs=first_phase_epochs,
             verbose=1 if verbose else 0,
         )
-        model.save("models/siamese_model_first_phase.h5")
+        # Save model weights instead of the entire model
+        model.save_weights("src/models/siamese_model_first_phase_weights.h5")
+        
         # second phase training
         if verbose:
             print(f"{'second phase training':=^40}")
@@ -358,24 +372,29 @@ def train(total_epochs: int = 10, verbose: bool = False) -> int:
             verbose=1 if verbose else 0,
             callbacks=[
                 k.callbacks.ModelCheckpoint(
-                    "models/siamese_model_second_phase",
+                    "src/models/siamese_model_second_phase_weights",
                     save_best_only=True,
-                    monitor="val_accuracy",
+                    monitor="val_binary_accuracy",
+                    save_weights_only=True,  # Save only weights
                 ),
                 k.callbacks.EarlyStopping(
-                    patience=5, restore_best_weights=True, monitor="val_accuracy"
+                    patience=5, restore_best_weights=True, monitor="val_binary_accuracy"
                 ),
             ],
         )
-        # save the model
-        model.save("models/siamese_fina.h5")
+        # Save the final model weights
+        model.save_weights("src/models/siamese_final_weights.h5")
+        
+        # Alternatively, save in TensorFlow format
+        tf.saved_model.save(model, "src/models/siamese_final_tf")
+        
         # Plot training history
         if verbose:
             plot_training_history(
-                history1, history2, save_path="models/training_history.png"
+                history1, history2, save_path="src/models/training_history.png"
             )
 
         return 0  # Success
     except Exception as e:
-        print(f"Error during tarining: {e}")
+        print(f"Error during tarining: 'accuracy'")
         return 1

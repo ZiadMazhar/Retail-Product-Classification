@@ -1,6 +1,5 @@
 import itertools
 import numpy as np
-from PIL import Image
 import cv2
 import os
 import tensorflow as tf
@@ -84,7 +83,7 @@ def load_data(
 
 def augment_data(
     X_t: np.ndarray, num_augmented: int, verbose: bool = False
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Augment the data by applying 4 transformations to the images
     args:
@@ -108,19 +107,20 @@ def augment_data(
         if verbose:
             print(f"Applying data augmentation to {len(X_t)} images...")
         for i in range(num_augmented):
-            X_augmented.append(
+            X_augmented.extend(
                 data_augmentation(tf.expand_dims(x, axis=0))[0].numpy() for x in X_t[0]
             )
-            Y_augmented.append(
+            Y_augmented.extend(
                 data_augmentation(tf.expand_dims(x, axis=0))[0].numpy() for x in X_t[1]
             )
 
         if verbose:
             print(f"Data augmentation complete. Augmented {len(X_augmented)} images.")
-        return tuple[X_augmented, Y_augmented]
+        return np.array(X_augmented), np.array(Y_augmented)
 
     except Exception as e:
         print(f"Error augmenting data: {e}")
+        return np.empty((0, *X_t[0].shape[1:]), dtype="float32"), np.empty((0, *X_t[1].shape[1:]), dtype="float32")
 
 
 def generate_dataset_for_training(
@@ -140,14 +140,15 @@ def generate_dataset_for_training(
         n_pairs = np.array(list(itertools.product(p, n)))
         if verbose:
             print(f"Generated {len(n_pairs)} positive-negative pairs.")
-        # Generate all possible (positive, positive) pairs  
+        # Generate all possible (positive, positive) pairs
         p_pairs = np.array(list(itertools.product(p, p)))
         if verbose:
             print(f"Generated {len(p_pairs)} positive-positive pairs.")
 
-        return tuple[p_pairs, n_pairs]
+        return p_pairs, n_pairs  # Correctly return the tuple
     except Exception as e:
         print(f"Error generating dataset for training: {e}")
+        return np.empty((0, *p.shape[1:]), dtype="float32"), np.empty((0, *n.shape[1:]), dtype="float32")
 
 
 def data_pipeline(
@@ -184,17 +185,22 @@ def data_pipeline(
         # Generate positive-negative pairs
         X_p, X_n = generate_dataset_for_training(X_t, verbose)
 
-        # Assign labels
-        y_p = np.array([1] * X_p.shape[1])  # (n,)
-        y_n = np.array([0] * X_n.shape[1])  # (n,)
+        # Ensure X_p and X_n have compatible dimensions for concatenation
+        min_size = min(X_p.shape[0], X_n.shape[0])
+        X_p = X_p[:min_size]
+        X_n = X_n[:min_size]
 
-        # Stack positive and negative pairs along axis=1 (n)
-        X_pairs = np.concatenate([X_p, X_n], axis=1)  # Shape: (2, 2n, h, w, c)
+        # Assign labels
+        y_p = np.array([1] * X_p.shape[0])  # (n,)
+        y_n = np.array([0] * X_n.shape[0])  # (n,)
+
+        # Stack positive and negative pairs along axis=0
+        X_pairs = np.concatenate([X_p, X_n], axis=0)  # Shape: (2n, h, w, c)
         y_labels = np.concatenate([y_p, y_n])  # Shape: (2n,)
 
         # Shuffle along the n dimension
         indices = np.random.permutation(y_labels.shape[0])  # Shuffle indices for pairs
-        X_pairs = X_pairs[:, indices]  # Shuffle along axis=1 (n dimension)
+        X_pairs = X_pairs[indices]  # Shuffle along axis=0
         y_labels = y_labels[indices]  # Shuffle labels accordingly
 
         # Split into training and testing sets
@@ -202,7 +208,9 @@ def data_pipeline(
         X_train, X_test = X_pairs[:split_index], X_pairs[split_index:]
         y_train, y_test = y_labels[:split_index], y_labels[split_index:]
         if verbose:
-            print(f"Data pipeline complete. Training set: {len(y_train)}, Testing set: {len(y_test)}")
-        return (X_train, y_train), (X_test, y_test)
+            print(
+                f"Data pipeline complete. Training set: {len(y_train)}, Testing set: {len(y_test)}"
+            )
+        return [[X_train, y_train], [X_test, y_test]]
     except Exception as e:
         print(f"Error in data pipeline: {e}")

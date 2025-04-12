@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 from segment_anything import sam_model_registry, SamPredictor
-import matplotlib as plt
-
+import matplotlib.pyplot as plt  # Fix: import pyplot directly, not matplotlib as plt
+import os
 
 ### locak import ###
 # none
@@ -18,7 +18,7 @@ class SamHelper:
     def init_model(
         self,
         model_type="vit_b",
-        model_path="models/sam_vit_b.pth",
+        model_path="src/models/sam_vit_b.pth",
         device="cuda" if torch.cuda.is_available() else "cpu",
     ):
         """
@@ -31,7 +31,8 @@ class SamHelper:
         return : SamPredictor : the predictor object
         """
         self.model_type = model_type
-        self.checkpoint_path = model_path
+        # Normalize path separators for the current OS
+        self.checkpoint_path = os.path.normpath(model_path)
         self.device = device
         self.sam = None
         self.predictor = None
@@ -40,18 +41,29 @@ class SamHelper:
     def _load_model(self):
         """
         Load the same model and intialize the predictor
-
         """
         try:
-            self.sam = sam_model_registry[self.model_type](
-                checkpoint=self.checkpoint_path
-            )
+            # Check if file exists and is accessible
+            if not os.path.exists(self.checkpoint_path):
+                print(f"Model file not found: {self.checkpoint_path}")
+                return
+                
+            # Try to open the file to check permissions
+            try:
+                with open(self.checkpoint_path, 'rb') as f:
+                    pass
+            except PermissionError:
+                print(f"Permission denied when accessing model file: {self.checkpoint_path}")
+                print("Try running the application as administrator or check file permissions")
+                return
+                
+            # Load the model
             self.sam = sam_model_registry[self.model_type](
                 checkpoint=self.checkpoint_path
             )
             self.sam = self.sam.to(self.device)
             self.predictor = SamPredictor(self.sam)
-            print(f"Model {self.model_type} loaded successfully on" + self.device)
+            print(f"Model {self.model_type} loaded successfully on {self.device}")
         except Exception as e:
             print(f"Error loading the SAM model: {e}")
 
@@ -83,7 +95,15 @@ class SamHelper:
         """
         try:
             if point_labels is None:
+                # Convert points to numpy array if it's a list
+                if isinstance(points, list):
+                    points = np.array(points)
                 point_labels = np.ones(len(points), dtype=np.int32)
+            
+            # Ensure points is a numpy array
+            if isinstance(points, list):
+                points = np.array(points)
+                
             masks, scores, logits = self.predictor.predict(
                 point_coords=points,
                 point_labels=point_labels,
@@ -92,7 +112,8 @@ class SamHelper:
             return masks, scores, logits
         except Exception as e:
             print(f"Error predicting masks: {e}")
-            return None
+            # Return empty arrays instead of None to avoid unpacking errors
+            return np.array([]), np.array([]), np.array([])
 
     def predict_masks_from_box(self, box, multimask_output=True):
         """
@@ -107,13 +128,15 @@ class SamHelper:
         logits : numpy.ndarray : the raw logits  of the model
         """
         try:
-            masks, scores, logits = self.predecitor.predict(
+            # Fix typo: self.predecitor -> self.predictor
+            masks, scores, logits = self.predictor.predict(
                 box=box, multimask_output=multimask_output
             )
             return masks, scores, logits
         except Exception as e:
             print(f"Error predicting masks: {e}")
-            return None
+            # Return empty arrays instead of None
+            return np.array([]), np.array([]), np.array([])
 
     def predict_masks_from_prompt(
         self, points, point_labels=None, box=None, multimask_output=True
@@ -132,6 +155,10 @@ class SamHelper:
         logits : numpy.ndarray : the raw logits  of the model
         """
         try:
+            # Convert points to numpy array if it's a list
+            if isinstance(points, list):
+                points = np.array(points)
+                
             masks, scores, logits = self.predictor.predict(
                 box=box,
                 point_coords=points,
@@ -141,7 +168,8 @@ class SamHelper:
             return masks, scores, logits
         except Exception as e:
             print(f"Error predicting masks: {e}")
-            return None
+            # Return empty arrays instead of None
+            return np.array([]), np.array([]), np.array([])
 
     @staticmethod
     def visualize_masks(image, masks, scores=None, alpha=0.5):
@@ -157,9 +185,16 @@ class SamHelper:
         fig : matplotlib.figure.Figure : Figure with the visualized masks
         """
         try:
-            plt.figure(figsize=(10, 10))
+            # Check if masks is empty
+            if masks.size == 0:
+                print("No masks to visualize")
+                return None
+                
+            fig = plt.figure(figsize=(10, 10))
             plt.imshow(image)
-            if scores is None:
+            
+            # Sort masks by scores if scores are provided
+            if scores is not None and scores.size > 0:
                 idx = np.argsort(scores)[::-1]
                 masks = masks[idx]
                 scores = scores[idx]
@@ -180,7 +215,7 @@ class SamHelper:
                         backgroundcolor="black",
                     )
             plt.axis("off")
-            return plt.gcf()
+            return fig
         except Exception as e:
             print(f"Error visualizing masks: {e}")
             return None
@@ -198,6 +233,11 @@ class SamHelper:
         best_score : float : the confidence of the best mask
         """
         try:
+            # Check if masks or scores are empty
+            if masks.size == 0 or scores.size == 0:
+                print("No masks or scores available to extract best mask")
+                return None, 0.0
+                
             idx = np.argmax(scores)
             return masks[idx], scores[idx]
         except Exception as e:

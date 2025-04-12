@@ -22,7 +22,7 @@ def main(
     point_labels: List[int] = None,
     box: List[int] = None,
     model_type: str = "vit_b",
-    checkpoint_path: str = "models/sam_vit_b.pth",
+    checkpoint_path: str = "src/models/sam_vit_b.pth",
     return_results: bool = False
 ) -> Union[int, Dict[str, Any]]:
     """
@@ -48,7 +48,7 @@ def main(
             raise FileNotFoundError(f"Image file not found: {img_name}")
         sam_helper_instance = SamHelper()
         # Initialize the SAM model
-        sam_helper_instance.init_model(model_type=model_type, checkpoint_path=checkpoint_path)
+        sam_helper_instance.init_model(model_type=model_type, model_path=checkpoint_path)
         
         # Load the image
         image = tf.keras.preprocessing.image.load_img(

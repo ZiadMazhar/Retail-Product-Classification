@@ -50,59 +50,22 @@ def load_X_and_M(X_root_path: str, M_root_path: str) -> tuple[np.ndarray, np.nda
         print(f"Error loading data: {e}")
         return np.empty((0, 512, 512, 3), dtype="float32"), np.empty((0, 512, 512, 3), dtype="float32")
     
-
-def cropper(X: np.ndarray, M: np.ndarray) -> list[np.ndarray]:
+def cropper(image: np.ndarray, bboxes: np.ndarray) -> list[np.ndarray]:
     """
-    Crops the images based on the masks to produce the zetas (cropped objects).
+    Crops the image based on the provided bounding boxes.
 
     Args:
-        X: np.ndarray, images with shape (n, height, width, channels).
-        M: np.ndarray, binary masks with shape (n, height, width).
+        image: np.ndarray, the input image (H, W, C).
+        bboxes: np.ndarray, array of bounding boxes with shape (N, 4), each as [x_min, y_min, x_max, y_max].
 
     Returns:
-        zetas: list[np.ndarray], cropped images with background removed.
+        crops: list[np.ndarray], list of cropped images.
     """
-    try:
-        zetas = []
-        
-        # Ensure we have the same number of images and masks
-        if X.shape[0] != M.shape[0]:
-            raise ValueError(f"Number of images ({X.shape[0]}) must match number of masks ({M.shape[0]})")
-
-        for i in range(X.shape[0]):
-            image = X[i]  # Current image
-            mask = M[i]   # Corresponding mask
-
-            # Convert mask to binary (if stored in 255 format)
-            if mask.max() == 255:
-                mask = mask // 255  # Normalize to {0, 1}
-
-            # Find the bounding box of the mask
-            if np.any(mask):  # Ensure the mask is not empty
-                rows = np.any(mask, axis=1)
-                cols = np.any(mask, axis=0)
-
-                y_min, y_max = np.where(rows)[0][[0, -1]]
-                x_min, x_max = np.where(cols)[0][[0, -1]]
-
-                # Crop the image and mask
-                cropped = image[y_min:y_max+1, x_min:x_max+1]
-                cropped_mask = mask[y_min:y_max+1, x_min:x_max+1]
-
-                # Apply mask to remove background
-                if len(cropped.shape) == 3:  # RGB image
-                    cropped_masked = cropped * np.expand_dims(cropped_mask, axis=-1)
-                else:  # Grayscale
-                    cropped_masked = cropped * cropped_mask
-
-                zetas.append(cropped_masked)
-                print(f"Image {i} cropped to shape: {cropped_masked.shape}")
-            else:
-                print(f"Warning: Mask {i} is empty. Adding blank image.")
-                zetas.append(np.zeros((10, 10, 3) if len(image.shape) == 3 else (10, 10), dtype=np.uint8))
-
-        return zetas
-
-    except Exception as e:
-        print(f"Error cropping data: {e}")
-        return []
+    crops = []
+    if bboxes.ndim != 2 or bboxes.shape[1] != 4:
+        raise ValueError("bboxes must be of shape (N, 4)")
+    for i, bbox in enumerate(bboxes):
+        x_min, y_min, x_max, y_max = bbox.astype(int)
+        crop = image[y_min:y_max+1, x_min:x_max+1]
+        crops.append(crop)
+    return crops

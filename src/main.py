@@ -8,6 +8,7 @@ from typing import List, Tuple, Dict, Any, Union
 from sam import main as sam_main
 from siamese import siameseModel, load_embedding_MobileNetV2
 from cropper import cropper
+from siamese import train as train_siamese
 
 def load_siamese_model(model_path: str = "src/models/siamese_final_weights.h5") -> siameseModel:
     """
@@ -122,7 +123,6 @@ def segment_and_crop_image(image_path: str) -> Tuple[List[np.ndarray], List[Dict
     # Run SAM to get segmentation
     results = sam_main(
         img_name=image_path,
-        do_generate=True,
         return_results=True
     )
     
@@ -131,42 +131,19 @@ def segment_and_crop_image(image_path: str) -> Tuple[List[np.ndarray], List[Dict
         return [], []
     
     # Get all masks and original image
-    masks = results["masks"]
+    bboxes = results["bboxes"]
     image = results["original_image"]
     
-    cropped_objects = []
-    bounding_boxes = []
-    
-    # Process each mask
-    for i in range(masks.shape[0]):
-        mask = masks[i]
-        
-        # Get bounding box from mask
-        rows = np.any(mask, axis=1)
-        cols = np.any(mask, axis=0)
-        y_min, y_max = np.where(rows)[0][[0, -1]]
-        x_min, x_max = np.where(cols)[0][[0, -1]]
-        
-        # Store bounding box
-        bbox = {
-            "x_min": int(x_min),
-            "y_min": int(y_min),
-            "x_max": int(x_max),
-            "y_max": int(y_max)
-        }
-        bounding_boxes.append(bbox)
-        
-        # Prepare arrays for cropper
-        X = np.expand_dims(image, axis=0)
-        M = np.expand_dims(mask, axis=0)
-        
-        # Crop the image
-        cropped_images = cropper(X, M)
-        
-        if cropped_images:
-            cropped_objects.append(cropped_images[0])
-    
-    return cropped_objects, bounding_boxes
+    # Crop all objects
+    cropped_images = cropper(image, bboxes)
+    # Convert bboxes to list of dicts if needed elsewhere
+    bbox_dicts = [
+        {"x_min": int(b[0]), "y_min": int(b[1]), "x_max": int(b[2]), "y_max": int(b[3])}
+        for b in bboxes
+    ]
+
+    # Return all cropped images (not just the first one)
+    return cropped_images, bbox_dicts
 
 def find_matching_product(reference_img_path: str, multi_product_img_path: str) -> Tuple[np.ndarray, float, Dict[str, int]]:
     """
@@ -186,17 +163,16 @@ def find_matching_product(reference_img_path: str, multi_product_img_path: str) 
         print("Error loading model")
         return None, 0.0, None
     
-    # Segment and crop the reference product
-    reference_crops, _ = segment_and_crop_image(reference_img_path)
-    
-    if not reference_crops:
-        print("Error: Could not segment reference product")
-        return None, 0.0, None
-    
-    reference_crop = reference_crops[0]  # Take the first crop as reference
-    
+
+    # Load the image
+    image = tf.keras.preprocessing.image.load_img(
+         reference_img_path, color_mode="rgb", target_size=(512, 512)
+    )
+    image = tf.keras.preprocessing.image.img_to_array(image)
+    image = np.array(image, dtype=np.uint8)
+
     # Preprocess reference image
-    processed_reference = preprocess_image(reference_crop)
+    processed_reference = preprocess_image(image)
     
     # Get reference embedding
     reference_embedding = get_embedding(model, processed_reference)[0]
@@ -214,6 +190,9 @@ def find_matching_product(reference_img_path: str, multi_product_img_path: str) 
     best_bbox = None
     
     for i, crop in enumerate(multi_product_crops):
+        # Skip empty crops
+        if crop is None or crop.size == 0 or crop.shape[0] == 0 or crop.shape[1] == 0:
+            continue
         # Preprocess crop
         processed_crop = preprocess_image(crop)
         
@@ -242,8 +221,8 @@ def test() -> int:
     """
     try:
         # Get paths from user
-        reference_img_path = input("Enter path to reference product image: ")
-        multi_product_img_path = input("Enter path to multi-product image: ")
+        reference_img_path = r"C:\Users\Ziad Mazhar\Documents\GitHub\Retail-Product-Classification\dbs\comparator_db\raw\P\1234599_kelloggs-coco-pops-375g-box.png.jpg"
+        multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\19976638-7595095-image-a-31_1571634857477.jpg"
         
         # Strip quotes if present
         reference_img_path = reference_img_path.strip('"\'')
@@ -268,51 +247,35 @@ def test() -> int:
             return 1
         
         # Display results
-        plt.figure(figsize=(15, 10))
+        plt.figure(figsize=(15, 5))
         
         # Load and display reference image
         reference_img = plt.imread(reference_img_path)
-        plt.subplot(2, 2, 1)
+        plt.subplot(1, 3, 1)
         plt.imshow(reference_img)
         plt.title("Reference Product")
         plt.axis('off')
         
-        # Display reference crop
-        reference_crops, _ = segment_and_crop_image(reference_img_path)
-        if reference_crops:
-            plt.subplot(2, 2, 2)
-            plt.imshow(reference_crops[0].astype(np.uint8))
-            plt.title("Reference Crop")
-            plt.axis('off')
-        
         # Display matching product
-        plt.subplot(2, 2, 3)
+        plt.subplot(1, 3, 2)
         plt.imshow(matching_product.astype(np.uint8))
         plt.title(f"Matching Product\nSimilarity: {similarity:.4f}")
         plt.axis('off')
         
         # Display original multi-product image with bounding box
         multi_product_img = plt.imread(multi_product_img_path)
-        plt.subplot(2, 2, 4)
+        plt.subplot(1, 3, 3)
         plt.imshow(multi_product_img)
-        
-        # Draw bounding box
         if bbox:
             x_min, y_min = bbox["x_min"], bbox["y_min"]
             width = bbox["x_max"] - x_min
             height = bbox["y_max"] - y_min
-            
-            # Create a Rectangle patch
             from matplotlib.patches import Rectangle
-            rect = Rectangle((x_min, y_min), width, height, 
-                            linewidth=2, edgecolor='r', facecolor='none')
-            
-            # Add the patch to the Axes
+            rect = Rectangle((x_min, y_min), width, height, linewidth=2, edgecolor='r', facecolor='none')
             plt.gca().add_patch(rect)
-        
-        plt.title("Multi-Product Image with Match Highlighted")
+        plt.title("Multi-Product Image\nMatch Highlighted")
         plt.axis('off')
-        
+
         plt.tight_layout()
         plt.show()
         
@@ -341,7 +304,7 @@ def main():
     if choice == "1":
         test()
     elif choice == "2":
-        from siamese import train as train_siamese
+     
         
         epochs = int(input("Enter number of training epochs (recommended: 10-30): "))
         verbose = input("Enable verbose output? (y/n): ").lower() == 'y'

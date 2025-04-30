@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from segment_anything import sam_model_registry, SamPredictor
+from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 import matplotlib.pyplot as plt  # Fix: import pyplot directly, not matplotlib as plt
 import os
 
@@ -66,110 +66,6 @@ class SamHelper:
             print(f"Model {self.model_type} loaded successfully on {self.device}")
         except Exception as e:
             print(f"Error loading the SAM model: {e}")
-
-    def set_image(self, image):
-        """
-        Set the image to be processed by the predictor
-
-        Args:
-        image : numpy.ndarray : the RGB image to be processed
-        """
-        self.predictor.set_image(image)
-        return self
-
-    def predict_masks_from_points(
-        self, points, point_labels=None, multimask_output=True
-    ):
-        """
-        Predict the masks from the points
-
-        Args:
-        points : list : the list of points to be predicted
-        point_labels : list : the list of labels for the points ( 1 for foreground, 0 for background)
-        multimask_output : bool : whether to return the mask as a single mask or multiple masks
-        returns
-        masks : numpy.ndarray : the predicted masks
-        scores : numpy.ndarray : the confidence of the predicted masks
-        logits : numpy.ndarray : the raw logits  of the model
-
-        """
-        try:
-            if point_labels is None:
-                # Convert points to numpy array if it's a list
-                if isinstance(points, list):
-                    points = np.array(points)
-                point_labels = np.ones(len(points), dtype=np.int32)
-            
-            # Ensure points is a numpy array
-            if isinstance(points, list):
-                points = np.array(points)
-                
-            masks, scores, logits = self.predictor.predict(
-                point_coords=points,
-                point_labels=point_labels,
-                multimask_output=multimask_output,
-            )
-            return masks, scores, logits
-        except Exception as e:
-            print(f"Error predicting masks: {e}")
-            # Return empty arrays instead of None to avoid unpacking errors
-            return np.array([]), np.array([]), np.array([])
-
-    def predict_masks_from_box(self, box, multimask_output=True):
-        """
-        Predict the masks from the bounding boxes
-
-        Args:
-        box (numpy.ndarray): Bounding box in xyxy format
-        multimask_output : bool : whether to return the mask as a single mask or multiple masks
-        returns
-        masks : numpy.ndarray : the predicted masks
-        scores : numpy.ndarray : the confidence of the predicted masks
-        logits : numpy.ndarray : the raw logits  of the model
-        """
-        try:
-            # Fix typo: self.predecitor -> self.predictor
-            masks, scores, logits = self.predictor.predict(
-                box=box, multimask_output=multimask_output
-            )
-            return masks, scores, logits
-        except Exception as e:
-            print(f"Error predicting masks: {e}")
-            # Return empty arrays instead of None
-            return np.array([]), np.array([]), np.array([])
-
-    def predict_masks_from_prompt(
-        self, points, point_labels=None, box=None, multimask_output=True
-    ):
-        """
-        Predict the masks from the points
-
-        Args:
-        points : list : the list of points to be predicted
-        point_labels : list : the list of labels for the points ( 1 for foreground, 0 for background)
-        box (numpy.ndarray): Bounding box in xyxy format
-        multimask_output : bool : whether to return the mask as a single mask or multiple masks
-        returns
-        masks : numpy.ndarray : the predicted masks
-        scores : numpy.ndarray : the confidence of the predicted masks
-        logits : numpy.ndarray : the raw logits  of the model
-        """
-        try:
-            # Convert points to numpy array if it's a list
-            if isinstance(points, list):
-                points = np.array(points)
-                
-            masks, scores, logits = self.predictor.predict(
-                box=box,
-                point_coords=points,
-                point_labels=point_labels,
-                multimask_output=multimask_output,
-            )
-            return masks, scores, logits
-        except Exception as e:
-            print(f"Error predicting masks: {e}")
-            # Return empty arrays instead of None
-            return np.array([]), np.array([]), np.array([])
 
     @staticmethod
     def visualize_masks(image, masks, scores=None, alpha=0.5):
@@ -242,3 +138,40 @@ class SamHelper:
             return masks[idx], scores[idx]
         except Exception as e:
             print(f"Error extracting best mask: {e}")
+            
+    def generate_masks(self, X: np.ndarray) -> np.ndarray:
+        """
+        Given an image and the SAM model, generate the masks
+        
+        Args:
+            X: np.ndarray, image to generate masks for
+        
+        Returns:
+            masks: np.ndarray, array of bounding boxes in format [x, y, w, h]
+            
+        Note:
+            The original masks contain keys:
+            dict_keys(['segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'crop_box'])
+        """
+        try:
+            # Initialize the generator
+            generator = SamAutomaticMaskGenerator(
+    model=self.sam,
+    min_mask_region_area=100
+)
+
+            # Generate the masks
+            masks = generator.generate(X)
+
+            # Extract only the boundary boxes
+            bbox_list = []
+            for mask in masks:
+                bbox = mask["bbox"]
+                bbox_list.append(bbox)
+
+            # Convert to np array
+            bbox_array = np.array(bbox_list)
+            return bbox_array
+        except Exception as e:
+            print(f"Error generating masks: {e}")
+            return np.array([])

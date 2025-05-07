@@ -4,6 +4,7 @@ MVP: Visual Comparator and Segmentor for SKU Identification
 This project implements a Minimum Viable Product (MVP) that leverages a Siamese Network and Segment Anything Model (SAM)
 to identify and verify instances of a particular Stock Keeping Unit (SKU), with a focus on Kellogg’s Coco Pops.
 It includes custom dataset decomposition and inference logic for visual similarity and segmentation tasks.
+![alt text](Figure_1.png)
 
 Key Components
 --------------
@@ -20,25 +21,21 @@ Key Components
 
 File Overview
 -------------
+- sam_helper.py: loads and initiate the sam model 
+- siamese_data_pipeline.py: load and augument dataset for training
+- siamese.py: load embeding model (mobileNetv2) and build and train the custom siamese model (gradual unfreezing) 
+- cropper.py: to crop the images
+- sam.py: middleware between the sam_helper.py and main.py
 - main.py: Loads and tests a Siamese model on sample image pairs.
-- 04_A_Deconstruction_of_the_MVP.pdf: Design document describing model architecture and dataset formulation.
 
 Requirements
 ------------
-- Python 3.8+
-- TensorFlow, NumPy, Matplotlib
+- check Requirments.txt
 
 Run Instructions
 ----------------
-1. Place the images and model weights in the correct directory.
-2. Run the application:
+1. Run the application:
    python main.py
-
-Future Work
------------
-- SAM integration
-- Dataset generation pipeline
-- Multi-SKU support
 
 License
 -------

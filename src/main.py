@@ -269,10 +269,11 @@ def test() -> int:
     """
     try:
         # Get paths from user
-        reference_img_path = r"C:\Users\Ziad Mazhar\Documents\GitHub\Retail-Product-Classification\dbs\comparator_db\raw\P\1234599_kelloggs-coco-pops-375g-box.png.jpg"
-        # multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\19976638-7595095-image-a-31_1571634857477.jpg"
-        multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\640.webp"
-        # multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\rice-krispies-and-coco-pops-cereal-stacked-own-the-shelf-in-a-uk-supermarket-ke44ek.jpg"
+        reference_img_path = input(
+            "Enter the path to the reference product image : ") 
+        multi_product_img_path = input(
+            "Enter the path to the multi-product image : "
+        )
         # Strip quotes if present
         reference_img_path = reference_img_path.strip("\"'")
         multi_product_img_path = multi_product_img_path.strip("\"'")

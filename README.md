@@ -4,7 +4,9 @@ MVP: Visual Comparator and Segmentor for SKU Identification
 This project implements a Minimum Viable Product (MVP) that leverages a Siamese Network and Segment Anything Model (SAM)
 to identify and verify instances of a particular Stock Keeping Unit (SKU), with a focus on Kellogg’s Coco Pops.
 It includes custom dataset decomposition and inference logic for visual similarity and segmentation tasks.
-![alt text](Figure_1.png)
+
+![Screenshot 2025-05-07 114527](https://github.com/user-attachments/assets/fddb7744-d9b1-4969-b793-75c8bd943f01)
+
 
 Key Components
 --------------

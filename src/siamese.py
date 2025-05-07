@@ -44,11 +44,11 @@ class siameseModel(tf.keras.Model):
             ]
         )
         self._build_model()
-        
+
     # Add get_config method for proper serialization
     def get_config(self):
         config = {
-            'image_shape': self.image_shape,
+            "image_shape": self.image_shape,
         }
         base_config = super(siameseModel, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
@@ -64,7 +64,9 @@ class siameseModel(tf.keras.Model):
         embedding_b = self.embedding_model(input_b)
 
         # Calculate absolute difference between embeddings
-        abs_diff = Lambda(lambda x: tf.math.abs(x[0] - x[1]))([embedding_a, embedding_b])
+        abs_diff = Lambda(lambda x: tf.math.abs(x[0] - x[1]))(
+            [embedding_a, embedding_b]
+        )
         merged = Concatenate(axis=-1)([embedding_a, embedding_b, abs_diff])
 
         # Pass through classifier to get similarity score
@@ -87,7 +89,7 @@ class siameseModel(tf.keras.Model):
         # Extract the first and second images from the input tensor
         image_a = X[:, 0]  # First image in each pair
         image_b = X[:, 1]  # Second image in each pair
-        
+
         # Pass through the siamese network
         return self.siamese_net([image_a, image_b], training=training)
 
@@ -216,10 +218,18 @@ def plot_training_history(history1, history2=None, save_path=None):
     if history2:
         # Adjust x-axis for phase 2
         x_offset = len(history1.history["binary_accuracy"])
-        x_phase2 = [x + x_offset for x in range(len(history2.history["binary_accuracy"]))]
+        x_phase2 = [
+            x + x_offset for x in range(len(history2.history["binary_accuracy"]))
+        ]
 
-        plt.plot(x_phase2, history2.history["binary_accuracy"], label="Phase 2 Training")
-        plt.plot(x_phase2, history2.history["val_binary_accuracy"], label="Phase 2 Validation")
+        plt.plot(
+            x_phase2, history2.history["binary_accuracy"], label="Phase 2 Training"
+        )
+        plt.plot(
+            x_phase2,
+            history2.history["val_binary_accuracy"],
+            label="Phase 2 Validation",
+        )
 
     plt.title("Model Accuracy")
     plt.ylabel("Accuracy")
@@ -346,7 +356,7 @@ def train(total_epochs: int = 10, verbose: bool = False) -> int:
         )
         # Save model weights instead of the entire model
         model.save_weights("src/models/siamese_model_first_phase_weights.h5")
-        
+
         # second phase training
         if verbose:
             print(f"{'second phase training':=^40}")
@@ -384,10 +394,10 @@ def train(total_epochs: int = 10, verbose: bool = False) -> int:
         )
         # Save the final model weights
         model.save_weights("src/models/siamese_final_weights.h5")
-        
+
         # Alternatively, save in TensorFlow format
         tf.saved_model.save(model, "src/models/siamese_final_tf")
-        
+
         # Plot training history
         if verbose:
             plot_training_history(

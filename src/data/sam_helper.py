@@ -47,16 +47,20 @@ class SamHelper:
             if not os.path.exists(self.checkpoint_path):
                 print(f"Model file not found: {self.checkpoint_path}")
                 return
-                
+
             # Try to open the file to check permissions
             try:
-                with open(self.checkpoint_path, 'rb') as f:
+                with open(self.checkpoint_path, "rb") as f:
                     pass
             except PermissionError:
-                print(f"Permission denied when accessing model file: {self.checkpoint_path}")
-                print("Try running the application as administrator or check file permissions")
+                print(
+                    f"Permission denied when accessing model file: {self.checkpoint_path}"
+                )
+                print(
+                    "Try running the application as administrator or check file permissions"
+                )
                 return
-                
+
             # Load the model
             self.sam = sam_model_registry[self.model_type](
                 checkpoint=self.checkpoint_path
@@ -70,13 +74,13 @@ class SamHelper:
     def generate_masks(self, X: np.ndarray) -> np.ndarray:
         """
         Given an image and the SAM model, generate the masks
-        
+
         Args:
             X: np.ndarray, image to generate masks for
-        
+
         Returns:
             masks: np.ndarray, array of bounding boxes in format [x, y, w, h]
-            
+
         Note:
             The original masks contain keys:
             dict_keys(['segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'crop_box'])
@@ -84,8 +88,8 @@ class SamHelper:
         try:
             # Initialize the generator
             generator = SamAutomaticMaskGenerator(
-    model=self.sam,
-)
+                model=self.sam,
+            )
 
             # Generate the masks
             masks = generator.generate(X)

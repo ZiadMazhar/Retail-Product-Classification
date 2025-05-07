@@ -2,11 +2,13 @@ import numpy as np
 import tensorflow as tf
 import os
 import matplotlib.pyplot as plt
-### local imports ###
-#none
 
-### type definitions ###    
-#none       
+### local imports ###
+# none
+
+
+### type definitions ###
+# none
 def cropper(image: np.ndarray, bboxes: np.ndarray) -> list[np.ndarray]:
     """
     Crops the image based on the provided bounding boxes.
@@ -21,7 +23,7 @@ def cropper(image: np.ndarray, bboxes: np.ndarray) -> list[np.ndarray]:
     crops = []
     if bboxes.ndim != 2 or bboxes.shape[1] != 4:
         raise ValueError("bboxes must be of shape (N, 4)")
-    
+
     # Plot original image with bboxes in different colors
     import matplotlib.pyplot as plt
     import random
@@ -32,16 +34,23 @@ def cropper(image: np.ndarray, bboxes: np.ndarray) -> list[np.ndarray]:
     for i, bbox in enumerate(bboxes):
         x_min, y_min, x_max, y_max = bbox.astype(int)
         color = [random.random() for _ in range(3)]
-        rect = plt.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, 
-                             linewidth=2, edgecolor=color, facecolor='none', label=f"BBox {i}")
+        rect = plt.Rectangle(
+            (x_min, y_min),
+            x_max - x_min,
+            y_max - y_min,
+            linewidth=2,
+            edgecolor=color,
+            facecolor="none",
+            label=f"BBox {i}",
+        )
         ax.add_patch(rect)
     plt.title("Original Image with BBoxes")
-    plt.axis('off')
+    plt.axis("off")
     plt.show()
 
     for i, bbox in enumerate(bboxes):
         x_min, y_min, x_max, y_max = bbox.astype(int)
-        crop = image[y_min:y_max+1, x_min:x_max+1]
+        crop = image[y_min : y_max + 1, x_min : x_max + 1]
         crops.append(crop)
 
     # # visualize the crops

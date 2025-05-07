@@ -120,7 +120,9 @@ def augment_data(
 
     except Exception as e:
         print(f"Error augmenting data: {e}")
-        return np.empty((0, *X_t[0].shape[1:]), dtype="float32"), np.empty((0, *X_t[1].shape[1:]), dtype="float32")
+        return np.empty((0, *X_t[0].shape[1:]), dtype="float32"), np.empty(
+            (0, *X_t[1].shape[1:]), dtype="float32"
+        )
 
 
 def generate_dataset_for_training(
@@ -148,7 +150,9 @@ def generate_dataset_for_training(
         return p_pairs, n_pairs  # Correctly return the tuple
     except Exception as e:
         print(f"Error generating dataset for training: {e}")
-        return np.empty((0, *p.shape[1:]), dtype="float32"), np.empty((0, *n.shape[1:]), dtype="float32")
+        return np.empty((0, *p.shape[1:]), dtype="float32"), np.empty(
+            (0, *n.shape[1:]), dtype="float32"
+        )
 
 
 def data_pipeline(

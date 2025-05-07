@@ -1,55 +1,12 @@
 import numpy as np
 import tensorflow as tf
 import os
-
+import matplotlib.pyplot as plt
 ### local imports ###
 #none
 
 ### type definitions ###    
-#none   
-
-def load_X_and_M(X_root_path: str, M_root_path: str) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Loads the images and masks from the given paths.
-
-    Args:
-        X_root_path: str, path to the images.
-        M_root_path: str, path to the masks.
-
-    Returns:
-        X: np.ndarray, images.
-        M: np.ndarray, masks.
-    """
-    try:
-        X_list = []
-        M_list = []
-        
-        # Load images
-        for root, _, files in os.walk(X_root_path):
-            for file in files:
-                img_path = os.path.join(root, file)
-                img = tf.keras.preprocessing.image.load_img(img_path)
-                img = np.array(img, dtype=np.float32)  
-                X_list.append(img)
-        
-        # Load masks
-        for root, _, files in os.walk(M_root_path):
-            for file in files:
-                mask_path = os.path.join(root, file)
-                mask = tf.keras.preprocessing.image.load_img(mask_path, color_mode="grayscale")
-                mask = np.array(mask, dtype=np.uint8)  
-                M_list.append(mask)
-        
-        # Convert lists to NumPy arrays
-        X = np.array(X_list) if X_list else np.empty((0, 512, 512, 3), dtype=np.float32)
-        M = np.array(M_list) if M_list else np.empty((0, 512, 512 ), dtype=np.uint8)
-
-        return X, M
-
-    except Exception as e:
-        print(f"Error loading data: {e}")
-        return np.empty((0, 512, 512, 3), dtype="float32"), np.empty((0, 512, 512, 3), dtype="float32")
-    
+#none       
 def cropper(image: np.ndarray, bboxes: np.ndarray) -> list[np.ndarray]:
     """
     Crops the image based on the provided bounding boxes.
@@ -64,8 +21,41 @@ def cropper(image: np.ndarray, bboxes: np.ndarray) -> list[np.ndarray]:
     crops = []
     if bboxes.ndim != 2 or bboxes.shape[1] != 4:
         raise ValueError("bboxes must be of shape (N, 4)")
+    
+    # Plot original image with bboxes in different colors
+    import matplotlib.pyplot as plt
+    import random
+
+    plt.figure(figsize=(8, 8))
+    plt.imshow(image.astype(np.uint8))
+    ax = plt.gca()
+    for i, bbox in enumerate(bboxes):
+        x_min, y_min, x_max, y_max = bbox.astype(int)
+        color = [random.random() for _ in range(3)]
+        rect = plt.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, 
+                             linewidth=2, edgecolor=color, facecolor='none', label=f"BBox {i}")
+        ax.add_patch(rect)
+    plt.title("Original Image with BBoxes")
+    plt.axis('off')
+    plt.show()
+
     for i, bbox in enumerate(bboxes):
         x_min, y_min, x_max, y_max = bbox.astype(int)
         crop = image[y_min:y_max+1, x_min:x_max+1]
         crops.append(crop)
+
+    # # visualize the crops
+    # batch_size = 20
+    # if crops:
+    #     for batch_start in range(0, len(crops), batch_size):
+    #         batch = crops[batch_start:batch_start + batch_size]
+    #         plt.figure(figsize=(3 * len(batch), 3))
+    #         for idx, crop in enumerate(batch):
+    #             plt.subplot(1, len(batch), idx + 1)
+    #             plt.imshow(crop.astype(np.uint8))
+    #             plt.title(f"Crop {batch_start + idx}")
+    #             plt.axis('off')
+    #         plt.tight_layout()
+    #         plt.show()
+
     return crops

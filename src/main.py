@@ -110,12 +110,13 @@ def comparator(zeta_Q: np.ndarray, zeta_P: np.ndarray) -> float:
     
     return similarity
 
-def segment_and_crop_image(image_path: str) -> Tuple[List[np.ndarray], List[Dict[str, int]]]:
+def segment_and_crop_image(image_path: str, reference_shape: Tuple[int, int]) -> Tuple[List[np.ndarray], List[Dict[str, int]]]:
     """
-    Segment an image using SAM and crop all objects.
+    Segment an image using SAM and crop all objects, only keeping crops similar in size to the reference image.
     
     Args:
         image_path: Path to the image
+        reference_shape: (height, width) of the reference image
         
     Returns:
         Tuple of (list of cropped object images, list of bounding boxes)
@@ -133,17 +134,44 @@ def segment_and_crop_image(image_path: str) -> Tuple[List[np.ndarray], List[Dict
     # Get all masks and original image
     bboxes = results["bboxes"]
     image = results["original_image"]
+    original_height, original_width = image.shape[:2]
     
-    # Crop all objects
-    cropped_images = cropper(image, bboxes)
-    # Convert bboxes to list of dicts if needed elsewhere
-    bbox_dicts = [
-        {"x_min": int(b[0]), "y_min": int(b[1]), "x_max": int(b[2]), "y_max": int(b[3])}
-        for b in bboxes
-    ]
+    # Store original image dimensions for later scaling
+    image_dimensions = {"height": original_height, "width": original_width}
 
-    # Return all cropped images (not just the first one)
-    return cropped_images, bbox_dicts
+    ref_h, ref_w = reference_shape
+    ref_area = ref_h * ref_w
+
+    filtered_bboxes = []
+    for b in bboxes:
+        x, y, w, h = b
+        x_min, y_min = int(x), int(y)
+        x_max, y_max = int(x + w), int(y + h)
+        filtered_bboxes.append([x_min, y_min, x_max, y_max])
+
+    for idx, b in enumerate(filtered_bboxes):
+        print(f"Filtered bbox {idx}: {b}, area: {(b[2]-b[0])*(b[3]-b[1])}")
+
+    print(f"Reference area: {ref_area}, Filtered {len(filtered_bboxes)} out of {len(bboxes)} bboxes")
+
+    # Convert filtered_bboxes to a NumPy array with shape (N, 4) before cropping
+    filtered_bboxes_np = np.array(filtered_bboxes, dtype=int).reshape(-1, 4)
+    cropped_images = cropper(image, filtered_bboxes_np)
+    
+    # Convert the filtered bounding boxes to the format expected by the visualization code
+    # [x_min, y_min, width, height]
+    visualization_bboxes = []
+    for bbox in bboxes:
+        x_min, y_min, width, height = bbox
+        visualization_bboxes.append({
+            "x": x_min, 
+            "y": y_min, 
+            "width": width, 
+            "height": height,
+            "original_dimensions": image_dimensions  # Store original image dimensions
+        })
+
+    return cropped_images, visualization_bboxes
 
 def find_matching_product(reference_img_path: str, multi_product_img_path: str) -> Tuple[np.ndarray, float, Dict[str, int]]:
     """
@@ -163,8 +191,7 @@ def find_matching_product(reference_img_path: str, multi_product_img_path: str) 
         print("Error loading model")
         return None, 0.0, None
     
-
-    # Load the image
+    # Load the reference image
     image = tf.keras.preprocessing.image.load_img(
          reference_img_path, color_mode="rgb", target_size=(512, 512)
     )
@@ -173,12 +200,11 @@ def find_matching_product(reference_img_path: str, multi_product_img_path: str) 
 
     # Preprocess reference image
     processed_reference = preprocess_image(image)
-    
-    # Get reference embedding
-    reference_embedding = get_embedding(model, processed_reference)[0]
+    processed_embedding = get_embedding(model, processed_reference)[0]
+    ref_shape = image.shape[:2]  # (height, width)
     
     # Segment and crop all products in the multi-product image
-    multi_product_crops, multi_product_bboxes = segment_and_crop_image(multi_product_img_path)
+    multi_product_crops, multi_product_bboxes = segment_and_crop_image(multi_product_img_path, ref_shape)
     
     if not multi_product_crops:
         print("Error: Could not segment any products in the multi-product image")
@@ -190,9 +216,7 @@ def find_matching_product(reference_img_path: str, multi_product_img_path: str) 
     best_bbox = None
     
     for i, crop in enumerate(multi_product_crops):
-        # Skip empty crops
-        if crop is None or crop.size == 0 or crop.shape[0] == 0 or crop.shape[1] == 0:
-            continue
+        print(f"Crop {i} shape: {crop.shape if isinstance(crop, np.ndarray) else 'Not ndarray'}")
         # Preprocess crop
         processed_crop = preprocess_image(crop)
         
@@ -200,12 +224,14 @@ def find_matching_product(reference_img_path: str, multi_product_img_path: str) 
         crop_embedding = get_embedding(model, processed_crop)[0]
         
         # Compare embeddings
-        similarity = comparator(reference_embedding, crop_embedding)
+        similarity = comparator(processed_embedding, crop_embedding)
+        
+        print(f"Similarity for crop {i}: {similarity}")
         
         if similarity > best_similarity:
             best_similarity = similarity
             best_match = crop
-            best_bbox = multi_product_bboxes[i]
+            best_bbox = multi_product_bboxes[i] if i < len(multi_product_bboxes) else None
     
     return best_match, best_similarity, best_bbox
 
@@ -222,8 +248,9 @@ def test() -> int:
     try:
         # Get paths from user
         reference_img_path = r"C:\Users\Ziad Mazhar\Documents\GitHub\Retail-Product-Classification\dbs\comparator_db\raw\P\1234599_kelloggs-coco-pops-375g-box.png.jpg"
-        multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\19976638-7595095-image-a-31_1571634857477.jpg"
-        
+        #multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\19976638-7595095-image-a-31_1571634857477.jpg"
+        multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\640.webp"
+        #multi_product_img_path = r"C:\Users\Ziad Mazhar\Downloads\rice-krispies-and-coco-pops-cereal-stacked-own-the-shelf-in-a-uk-supermarket-ke44ek.jpg"
         # Strip quotes if present
         reference_img_path = reference_img_path.strip('"\'')
         multi_product_img_path = multi_product_img_path.strip('"\'')
@@ -266,27 +293,64 @@ def test() -> int:
         multi_product_img = plt.imread(multi_product_img_path)
         plt.subplot(1, 3, 3)
         plt.imshow(multi_product_img)
-        if bbox:
-            x_min, y_min = bbox["x_min"], bbox["y_min"]
-            width = bbox["x_max"] - x_min
-            height = bbox["y_max"] - y_min
+        
+        # Draw the bounding box if available
+        if bbox is not None:
             from matplotlib.patches import Rectangle
-            rect = Rectangle((x_min, y_min), width, height, linewidth=2, edgecolor='r', facecolor='none')
+            
+            # Get bounding box coordinates
+            x = bbox["x"]
+            y = bbox["y"]
+            width = bbox["width"]
+            height = bbox["height"]
+            
+            # Get original image dimensions if available
+            if "original_dimensions" in bbox:
+                orig_dims = bbox["original_dimensions"]
+                img_height, img_width = multi_product_img.shape[:2]
+                
+                # Scale bounding box if the displayed image dimensions differ from original
+                if orig_dims["height"] != img_height or orig_dims["width"] != img_width:
+                    x_scale = img_width / orig_dims["width"]
+                    y_scale = img_height / orig_dims["height"]
+                    
+                    x = int(x * x_scale)
+                    y = int(y * y_scale)
+                    width = int(width * x_scale)
+                    height = int(height * y_scale)
+                    
+                    print(f"Scaled bbox: x={x}, y={y}, width={width}, height={height}")
+            
+            # Create a rectangle patch with a thicker line and more visible color
+            rect = Rectangle((x, y), width, height, 
+                            linewidth=3, 
+                            edgecolor='lime', 
+                            facecolor='none')
             plt.gca().add_patch(rect)
+            
+            # Add a text label near the bounding box
+            plt.text(x, y-10, f"Match: {similarity:.2f}", 
+                    color='white', fontsize=12, 
+                    bbox=dict(facecolor='red', alpha=0.7))
+        
         plt.title("Multi-Product Image\nMatch Highlighted")
         plt.axis('off')
 
         plt.tight_layout()
+        # plt.savefig("matching_result.png")  # Save the visualization
         plt.show()
         
         print(f"Matching product found with similarity: {similarity:.4f}")
         print(f"{'Match confirmed' if similarity > 0.7 else 'Possible match, but similarity is low'}")
-        print(f"Matching product location: {bbox}")
+        if bbox:
+            print(f"Matching product location: x={bbox['x']}, y={bbox['y']}, width={bbox['width']}, height={bbox['height']}")
         
         return 0
     
     except Exception as e:
         print(f"Error in test function: {e}")
+        import traceback
+        traceback.print_exc()  # Print full traceback for debugging
         return 1
 
 

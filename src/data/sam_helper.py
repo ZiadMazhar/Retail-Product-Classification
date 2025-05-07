@@ -1,8 +1,8 @@
 import torch
 import numpy as np
-from segment_anything import sam_model_registry, SamPredictor
-import matplotlib as plt
-
+from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
+import matplotlib.pyplot as plt  # Fix: import pyplot directly, not matplotlib as plt
+import os
 
 ### locak import ###
 # none
@@ -18,7 +18,7 @@ class SamHelper:
     def init_model(
         self,
         model_type="vit_b",
-        model_path="models/sam_vit_b.pth",
+        model_path="src/models/sam_vit_b.pth",
         device="cuda" if torch.cuda.is_available() else "cpu",
     ):
         """
@@ -31,7 +31,8 @@ class SamHelper:
         return : SamPredictor : the predictor object
         """
         self.model_type = model_type
-        self.checkpoint_path = model_path
+        # Normalize path separators for the current OS
+        self.checkpoint_path = os.path.normpath(model_path)
         self.device = device
         self.sam = None
         self.predictor = None
@@ -40,165 +41,68 @@ class SamHelper:
     def _load_model(self):
         """
         Load the same model and intialize the predictor
-
         """
         try:
-            self.sam = sam_model_registry[self.model_type](
-                checkpoint=self.checkpoint_path
-            )
+            # Check if file exists and is accessible
+            if not os.path.exists(self.checkpoint_path):
+                print(f"Model file not found: {self.checkpoint_path}")
+                return
+
+            # Try to open the file to check permissions
+            try:
+                with open(self.checkpoint_path, "rb") as f:
+                    pass
+            except PermissionError:
+                print(
+                    f"Permission denied when accessing model file: {self.checkpoint_path}"
+                )
+                print(
+                    "Try running the application as administrator or check file permissions"
+                )
+                return
+
+            # Load the model
             self.sam = sam_model_registry[self.model_type](
                 checkpoint=self.checkpoint_path
             )
             self.sam = self.sam.to(self.device)
             self.predictor = SamPredictor(self.sam)
-            print(f"Model {self.model_type} loaded successfully on" + self.device)
+            print(f"Model {self.model_type} loaded successfully on {self.device}")
         except Exception as e:
             print(f"Error loading the SAM model: {e}")
 
-    def set_image(self, image):
+    def generate_masks(self, X: np.ndarray) -> np.ndarray:
         """
-        Set the image to be processed by the predictor
+        Given an image and the SAM model, generate the masks
 
         Args:
-        image : numpy.ndarray : the RGB image to be processed
-        """
-        self.predictor.set_image(image)
-        return self
+            X: np.ndarray, image to generate masks for
 
-    def predict_masks_from_points(
-        self, points, point_labels=None, multimask_output=True
-    ):
-        """
-        Predict the masks from the points
+        Returns:
+            masks: np.ndarray, array of bounding boxes in format [x, y, w, h]
 
-        Args:
-        points : list : the list of points to be predicted
-        point_labels : list : the list of labels for the points ( 1 for foreground, 0 for background)
-        multimask_output : bool : whether to return the mask as a single mask or multiple masks
-        returns
-        masks : numpy.ndarray : the predicted masks
-        scores : numpy.ndarray : the confidence of the predicted masks
-        logits : numpy.ndarray : the raw logits  of the model
-
+        Note:
+            The original masks contain keys:
+            dict_keys(['segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'crop_box'])
         """
         try:
-            if point_labels is None:
-                point_labels = np.ones(len(points), dtype=np.int32)
-            masks, scores, logits = self.predictor.predict(
-                point_coords=points,
-                point_labels=point_labels,
-                multimask_output=multimask_output,
+            # Initialize the generator
+            generator = SamAutomaticMaskGenerator(
+                model=self.sam,
             )
-            return masks, scores, logits
+
+            # Generate the masks
+            masks = generator.generate(X)
+
+            # Extract only the boundary boxes
+            bbox_list = []
+            for mask in masks:
+                bbox = mask["bbox"]
+                bbox_list.append(bbox)
+
+            # Convert to np array
+            bbox_array = np.array(bbox_list)
+            return bbox_array
         except Exception as e:
-            print(f"Error predicting masks: {e}")
-            return None
-
-    def predict_masks_from_box(self, box, multimask_output=True):
-        """
-        Predict the masks from the bounding boxes
-
-        Args:
-        box (numpy.ndarray): Bounding box in xyxy format
-        multimask_output : bool : whether to return the mask as a single mask or multiple masks
-        returns
-        masks : numpy.ndarray : the predicted masks
-        scores : numpy.ndarray : the confidence of the predicted masks
-        logits : numpy.ndarray : the raw logits  of the model
-        """
-        try:
-            masks, scores, logits = self.predecitor.predict(
-                box=box, multimask_output=multimask_output
-            )
-            return masks, scores, logits
-        except Exception as e:
-            print(f"Error predicting masks: {e}")
-            return None
-
-    def predict_masks_from_prompt(
-        self, points, point_labels=None, box=None, multimask_output=True
-    ):
-        """
-        Predict the masks from the points
-
-        Args:
-        points : list : the list of points to be predicted
-        point_labels : list : the list of labels for the points ( 1 for foreground, 0 for background)
-        box (numpy.ndarray): Bounding box in xyxy format
-        multimask_output : bool : whether to return the mask as a single mask or multiple masks
-        returns
-        masks : numpy.ndarray : the predicted masks
-        scores : numpy.ndarray : the confidence of the predicted masks
-        logits : numpy.ndarray : the raw logits  of the model
-        """
-        try:
-            masks, scores, logits = self.predictor.predict(
-                box=box,
-                point_coords=points,
-                point_labels=point_labels,
-                multimask_output=multimask_output,
-            )
-            return masks, scores, logits
-        except Exception as e:
-            print(f"Error predicting masks: {e}")
-            return None
-
-    @staticmethod
-    def visualize_masks(image, masks, scores=None, alpha=0.5):
-        """
-        Visualize the masks on the image
-
-        Args:
-        image : numpy.ndarray : the image to be visualized
-        masks : numpy.ndarray : the masks to be visualized
-        scores : numpy.ndarray : the confidence of the masks
-        alpha : float : the transparency of the masks
-        returns
-        fig : matplotlib.figure.Figure : Figure with the visualized masks
-        """
-        try:
-            plt.figure(figsize=(10, 10))
-            plt.imshow(image)
-            if scores is None:
-                idx = np.argsort(scores)[::-1]
-                masks = masks[idx]
-                scores = scores[idx]
-
-            colors = np.random.rand(len(masks), 3)
-            for i, (mask, color) in enumerate(zip(masks, colors)):
-                colored_mask = np.zeros_like(image)
-                colored_mask[mask] = color
-                plt.imshow(colored_mask, alpha=alpha * mask)
-
-                if scores is not None:
-                    plt.text(
-                        10,
-                        20 + 20 * i,
-                        f"Score: {scores[i]:.3f}",
-                        fontsize=12,
-                        color=color,
-                        backgroundcolor="black",
-                    )
-            plt.axis("off")
-            return plt.gcf()
-        except Exception as e:
-            print(f"Error visualizing masks: {e}")
-            return None
-
-    @staticmethod
-    def extract_best_mask(masks, scores):
-        """
-        Extract the best mask from the masks
-
-        Args:
-        masks : numpy.ndarray : the masks to be extracted
-        scores : numpy.ndarray : the confidence of the masks
-        returns
-        best_mask : numpy.ndarray : the best mask
-        best_score : float : the confidence of the best mask
-        """
-        try:
-            idx = np.argmax(scores)
-            return masks[idx], scores[idx]
-        except Exception as e:
-            print(f"Error extracting best mask: {e}")
+            print(f"Error generating masks: {e}")
+            return np.array([])

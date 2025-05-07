@@ -19,6 +19,8 @@ dbs/**/*.db
 dbs/**/*.sqlite
 dbs/**/*.csv
 dbs/**/*.json
+dbs
+models
 
 # Ignore model and large binary files
 *.pth
@@ -40,3 +42,4 @@ dbs/**/*.json
 *.dll
 *.so
 *.dylib
+src/test.py
